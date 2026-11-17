@@ -8,6 +8,7 @@ import (
 )
 
 type Field struct {
+	Idx           int
 	NetType       string
 	NetRecordName string
 	NetArgName    string
@@ -133,11 +134,12 @@ func ToNetArgName(cname string) string {
 	return result
 }
 
-func MapColumn(col *plugin.Column) Field {
+func MapColumn(idx int, col *plugin.Column) Field {
 	columnName := col.Name
 	sqlType := col.Type.GetName()
 
 	return Field{
+		Idx:           idx,
 		NetType:       MapSqlType(sqlType),
 		NetRecordName: ToNetRecordName(columnName),
 		NetArgName:    ToNetArgName(columnName),
@@ -150,8 +152,8 @@ func MapColumn(col *plugin.Column) Field {
 func MapColumns(cols []*plugin.Column) []Field {
 	res := make([]Field, 0)
 
-	for _, c := range cols {
-		res = append(res, MapColumn(c))
+	for i, c := range cols {
+		res = append(res, MapColumn(i, c))
 	}
 
 	return res
@@ -160,8 +162,8 @@ func MapColumns(cols []*plugin.Column) []Field {
 func MapParameters(params []*plugin.Parameter) []Field {
 	res := make([]Field, 0)
 
-	for _, p := range params {
-		res = append(res, MapColumn(p.Column))
+	for i, p := range params {
+		res = append(res, MapColumn(i, p.Column))
 	}
 
 	return res

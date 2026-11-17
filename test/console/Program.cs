@@ -10,10 +10,8 @@ services.AddDb(cs);
 IServiceProvider provider = services.BuildServiceProvider();
 
 var db = provider.GetRequiredService<Db>();
-// await Operation(db);
-//
-
 var query = new Query(db);
+var author = query.GetBook(1);
 // await query.CreateAuthor("ivan", "bio", ["some tag"]);
 var authors = await query.ListAuthors(minId: null, minCreatedAt: null, sortBy: "created_at");
 

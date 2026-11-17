@@ -3,12 +3,17 @@ export
 
 DB_CONTAINER := sqlc-net-plugin-db
 
+install:
+	go install github.com/pressly/goose/v3/cmd/goose@latest
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+	go install net-plugin
+
+
 build:
 	go build -o ./bin/net-plugin main.go
 
 gen: build
 	cd test && sqlc generate
-	cd test/gen && dotnet restore && dotnet build
 
 console:
 	cd test/console && dotnet run

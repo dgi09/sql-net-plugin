@@ -146,6 +146,7 @@ const OneQueryTemp = `
 {{- define "nettype"}}{{.NetType}}{{if .IsArray}}[]{{end}}{{if .IsNullable}}?{{end}}{{end -}}
 {{- define "field"}}{{template "nettype" .}} {{.NetRecordName}}{{end -}}
 {{- define "param"}}{{template "nettype" .}} {{.NetArgName}}{{end -}}
+{{- define "field_read"}}{{if .IsNullable}}reader.IsDBNull({{.Idx}}) ? null : reader.GetFieldValue<{{template "nettype" .}}>({{.Idx}}){{else}}reader.GetFieldValue<{{template "nettype" .}}>({{.Idx}}){{end}}{{end -}}
     readonly string {{.Name}}Query = @"
 {{.Text}}";
 	public record {{.Name}}Record({{range $i,$f := .Result}}{{if $i}},{{end}}{{template "field" $f}}{{end}});
@@ -161,7 +162,9 @@ const OneQueryTemp = `
         var ok = await reader.ReadAsync();
         if (!ok) return null;
 
-        return new {{.Name}}Record({{range $i,$f := .Result}}{{if $i}},{{end}}reader.GetFieldValue<{{template "nettype" $f}}>({{$i}}){{end}});
+        return new {{.Name}}Record(
+			{{range .Result}}{{if .Idx}},
+			{{end}}{{template "field_read" .}}{{end}});
     }
 
 `
@@ -170,6 +173,7 @@ const ManyQueryTemp = `
 {{- define "nettype"}}{{.NetType}}{{if .IsArray}}[]{{end}}{{if .IsNullable}}?{{end}}{{end -}}
 {{- define "field"}}{{template "nettype" .}} {{.NetRecordName}}{{end -}}
 {{- define "param"}}{{template "nettype" .}} {{.NetArgName}}{{end -}}
+{{- define "field_read"}}{{if .IsNullable}}reader.IsDBNull({{.Idx}}) ? null : reader.GetFieldValue<{{template "nettype" .}}>({{.Idx}}){{else}}reader.GetFieldValue<{{template "nettype" .}}>({{.Idx}}){{end}}{{end -}}
     readonly string {{.Name}}Query = @"
 {{.Text}}";
     public record {{.Name}}Record({{range $i,$f := .Result}}{{if $i}},{{end}}{{template "field" $f}}{{end}});
@@ -184,7 +188,9 @@ const ManyQueryTemp = `
         var result = new List<{{.Name}}Record>();
         while (await reader.ReadAsync())
         {
-            result.Add(new {{.Name}}Record({{range $i,$f := .Result}}{{if $i}},{{end}}reader.GetFieldValue<{{template "nettype" $f}}>({{$i}}){{end}}));
+			result.Add(new {{.Name}}Record(
+				{{range .Result}}{{if .Idx}},
+				{{end}}{{template "field_read" .}}{{end}}));
         }
 
         return result;
