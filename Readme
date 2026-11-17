@@ -175,6 +175,26 @@ Nullable columns become nullable C# types (`T?`) and arrays become C# arrays
 The `test/` folder contains a complete example: migrations, queries, and a
 console app that uses the generated library.
 
+```
+test/
+├── sqlc.yaml                          # sqlc config using the plugin
+├── migrations/                        # schema (goose migrations)
+│   ├── 00001_create_authors.sql
+│   ├── 00002_create_books.sql
+│   └── 00003_add_tags_to_authors.sql
+├── queries/                           # annotated SQL queries
+│   ├── authors.sql
+│   └── books.sql
+├── gen/                               # generated .NET project (created by `make gen`)
+│   ├── Project.Data.csproj
+│   ├── DbCtx.cs
+│   ├── Extensions.cs
+│   └── Query.cs
+└── console/                           # sample app using the generated library
+    ├── console.csproj
+    └── Program.cs
+```
+
 ```bash
 cp env.example .env   # local DB settings
 make gen              # build plugin + generate and build test/gen
