@@ -1,0 +1,18 @@
+version: "2"
+plugins:
+  - name: net-plugin
+    process:
+      cmd: ../bin/net-plugin
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: queries/
+    codegen:
+      - plugin: net-plugin
+        out: gen/
+        options:
+           projName: Project.Data
+           netVersion: net11.0
+           namespace: Project.Data
+           class: Db
+           extFunc: AddDb

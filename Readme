@@ -1,0 +1,204 @@
+# sqlc .NET plugin
+
+A [sqlc](https://sqlc.dev) plugin that generates a **C# / .NET data-access
+library** from your PostgreSQL schema and SQL queries.
+
+You write plain SQL; the plugin gives you a ready-to-build .NET project with
+strongly typed, async methods for every query, result records, a
+dependency-injection extension and transaction support — built on
+[Npgsql](https://www.npgsql.org/).
+
+---
+
+## Requirements
+
+| Tool | Version | Used for |
+|------|---------|----------|
+| [Go](https://go.dev/dl/) | 1.27.3+ | Building the plugin |
+| [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html) | with plugin support (config `version: "2"`) | Generating code |
+| [.NET SDK](https://dotnet.microsoft.com/download) | matching your `netVersion` (sample: `net11.0`) | Building the generated library |
+| [Docker](https://www.docker.com/) | any recent | Local PostgreSQL for the sample (optional) |
+| [goose](https://github.com/pressly/goose) | v3 | Running the sample migrations (optional) |
+| `make` | — | Convenience targets |
+
+### Dependencies
+
+- **Plugin:** `github.com/sqlc-dev/plugin-sdk-go` v1.23.0
+- **Generated .NET project:** `Npgsql` 10.0.3, `Npgsql.DependencyInjection` 10.0.3
+- **Your app:** `Microsoft.Extensions.DependencyInjection` (to use the generated registration method)
+
+---
+
+## Installation
+
+```bash
+make build
+```
+
+This produces the plugin binary at `./bin/net-plugin`.
+
+---
+
+## Usage
+
+### 1. Configure sqlc
+
+Add the plugin to your `sqlc.yaml`:
+
+```yaml
+version: "2"
+plugins:
+  - name: net-plugin
+    process:
+      cmd: /path/to/bin/net-plugin
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: queries/
+    codegen:
+      - plugin: net-plugin
+        out: gen/
+        options:
+          projName: Project.Data
+          netVersion: net11.0
+          namespace: Project.Data
+          class: Db
+          extFunc: AddDb
+```
+
+| Option       | Description                                          |
+|--------------|------------------------------------------------------|
+| `projName`   | Name of the generated project (`<projName>.csproj`)  |
+| `netVersion` | Target framework, e.g. `net8.0`, `net11.0`           |
+| `namespace`  | Namespace for the generated code                     |
+| `class`      | Name of the database class registered in DI          |
+| `extFunc`    | Name of the `IServiceCollection` extension method    |
+
+All options are required.
+
+### 2. Write queries
+
+Annotate each query with a name and a command:
+
+```sql
+-- name: GetAuthor :one
+SELECT * FROM authors WHERE id = @id LIMIT 1;
+
+-- name: ListAuthors :many
+SELECT * FROM authors
+WHERE sqlc.narg(min_id)::bigint IS NULL OR id > sqlc.narg(min_id);
+
+-- name: DeleteAuthor :exec
+DELETE FROM authors WHERE id = $1;
+```
+
+| Command | Returns                                         |
+|---------|-------------------------------------------------|
+| `:one`  | `Task<{Name}Record?>` — `null` if no row found  |
+| `:many` | `Task<IEnumerable<{Name}Record>>`               |
+| `:exec` | `Task<int>` — number of affected rows           |
+
+Tips:
+
+- Parameters can be written in one of these ways:
+  - `$1`, `$2`, … — positional; the argument name is taken from the matching column.
+  - `@name` — named parameter.
+  - `sqlc.arg(name)` / `sqlc.narg(name)` — named parameter; `narg` makes it optional (nullable).
+- Don't mix positional (`$1`) and named (`@name`, `sqlc.arg`/`sqlc.narg`) parameters in the same query.
+- Column names become `PascalCase` properties, arguments become `camelCase`.
+
+### 3. Generate
+
+```bash
+sqlc generate
+```
+
+Reference the generated `.csproj` from your application. Don't edit the
+generated files — they are overwritten on every run.
+
+### 4. Use it in .NET
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Project.Data;
+
+var services = new ServiceCollection();
+services.AddDb("Host=localhost;Port=5434;Database=sqlc_test;Username=postgres;Password=postgres");
+
+var provider = services.BuildServiceProvider();
+var db = provider.GetRequiredService<Db>();
+
+var query = new Query(db);
+
+var author  = await query.GetAuthor(1);
+var authors = await query.ListAuthors(minId: null, minCreatedAt: null, sortBy: "created_at");
+var deleted = await query.DeleteAuthor(1);
+```
+
+#### Transactions
+
+```csharp
+await using var tx = await db.BeginTx();
+var q = new Query(tx);
+
+await q.UpdateAuthor(id, "new name", "new bio");
+await q.CreateBook(id, "Title", "isbn-123");
+
+await tx.Commit();   // or: await tx.Rollback();
+```
+
+If the transaction is disposed without `Commit()`, it is rolled back.
+
+### Supported types
+
+| PostgreSQL                                                  | C#         |
+|-------------------------------------------------------------|------------|
+| `boolean`                                                   | `bool`     |
+| `smallint`                                                  | `short`    |
+| `integer`, `int4`                                           | `int`      |
+| `bigint`, `int8`, `bigserial`                               | `long`     |
+| `real`                                                      | `float`    |
+| `double precision`                                          | `double`   |
+| `numeric`, `money`                                          | `decimal`  |
+| `uuid`                                                      | `Guid`     |
+| `timestamp`, `timestamptz`, `date`                          | `DateTime` |
+| `interval`                                                  | `TimeSpan` |
+| `text`, `varchar`, `character`, `citext`, `json`, `jsonb`   | `string`   |
+
+Nullable columns become nullable C# types (`T?`) and arrays become C# arrays
+(`text[]` → `string[]`).
+
+---
+
+## Running the sample
+
+The `test/` folder contains a complete example: migrations, queries, and a
+console app that uses the generated library.
+
+```bash
+cp env.example .env   # local DB settings
+make gen              # build plugin + generate and build test/gen
+make up-dep           # start PostgreSQL in Docker
+make migrate          # apply migrations
+make console          # run the sample app
+make down-dep         # stop PostgreSQL when done
+```
+
+| Target           | Description                                       |
+|------------------|---------------------------------------------------|
+| `build`          | Build the plugin                                  |
+| `gen`            | Build the plugin, generate code and build it      |
+| `console`        | Run the sample console app                        |
+| `up-dep`         | Start a PostgreSQL 17 container                   |
+| `down-dep`       | Remove the PostgreSQL container                   |
+| `migrate`        | Apply migrations                                  |
+| `migrate-down`   | Roll back the last migration                      |
+| `migrate-status` | Show migration status                             |
+
+---
+
+## Limitations
+
+- PostgreSQL only.
+- Only `:one`, `:many` and `:exec` queries are supported.
+- Types not listed above (e.g. enums, `bytea`, `time`, `inet`) are not supported yet.
